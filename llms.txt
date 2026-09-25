@@ -1,0 +1,23 @@
+# Observator — llms.txt
+
+> Observator is a conditional settlement layer for machine-to-machine payments
+> on Solana: escrowed funds release only when deterministic, machine-verifiable
+> delivery conditions pass. Deterministic checks — never LLM output — control
+> settlement. Status: working prototype; escrow program written, Devnet deploy
+> in progress.
+
+- Product summary: README.md ("What is Observator?", "Key facts", "FAQ")
+- Build spec (authoritative): OBSERVATOR_MASTER_BUILD_SPEC.md
+- Architecture: docs/architecture.md
+- Verification contract: docs/verification-spec.md
+- Demo script (both paths): docs/demo-script.md
+- Submission narrative: docs/submission-narrative.md
+- Judge Q&A: docs/judge-qa.md
+- x402 adapter: docs/x402-note.md
+- Progress + checkpoints: docs/implementation-checklist.md
+- Backend entry: apps/api/src/index.ts (routes: apps/api/src/routes/jobs.ts)
+- Verification engine: apps/api/src/verification/engine.ts
+- Dashboard: apps/web/app (create, jobs, jobs/[id])
+- MCP server: apps/mcp/src/index.ts (tools: apps/mcp/src/tools.ts)
+- Escrow program: programs/observator-escrow/src/lib.rs
+- Demo provider: demo/provider/src/index.ts

@@ -1,0 +1,22 @@
+{
+  "name": "observator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Observator — conditional settlement layer for machine-to-machine payments (Solana Devnet)",
+  "workspaces": [
+    "apps/api",
+    "apps/mcp",
+    "apps/web",
+    "demo/provider"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "dev:api": "npm run dev --workspace apps/api",
+    "dev:provider": "npm run dev --workspace demo/provider",
+    "dev:web": "npm run dev --workspace apps/web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
