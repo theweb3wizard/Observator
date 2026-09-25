@@ -14,7 +14,7 @@
 
 use anchor_lang::prelude::*;
 
-declare_id!("11111111111111111111111111111111");
+declare_id!("6yXXYuix6c93kfGhqv8fCseRa7pXTKx1pxCjcFeWToPx");
 
 #[program]
 pub mod observator_escrow {

@@ -12,8 +12,15 @@
 - [x] Skeleton with init/fund/release/refund/mark-expired + invariants
 - [x] Decision: compile/test/deploy via Solana Playground (no local toolchain;
       laptop virtualization unavailable) — Checkpoint B = paste-build-deploy session
-- [ ] Playground build + deploy to Devnet, record program ID + txs
-- [ ] Checkpoint B sign-off (do not proceed on red)
+- [x] Playground build (success, 6.57s) + deploy to Devnet (success, ~10 min
+      incl. devnet rate-limit retries). Program ID:
+      `6yXXYuix6c93kfGhqv8fCseRa7pXTKx1pxCjcFeWToPx`
+      (https://explorer.solana.com/address/6yXXYuix6c93kfGhqv8fCseRa7pXTKx1pxCjcFeWToPx?cluster=devnet).
+      Backend derives real escrow PDAs from it (verified live).
+      Fixed en route: Fund/Settle `mint` accounts (E0425), valid base58
+      placeholder ID. On-chain attack-test suite (unauthorized/double-settle/
+      wrong-mint) still to run as program tests — tracked, not claimed.
+- [x] Checkpoint B sign-off (deploy green; program tests outstanding, see above)
 
 ## Phase 3 — Verification → Checkpoint C
 - [x] 6 checks + result format + unit tests (valid, malformed, missing field,

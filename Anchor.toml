@@ -3,7 +3,7 @@ seeds = false
 skip-lint = false
 
 [programs.devnet]
-observator_escrow = "11111111111111111111111111111111"
+observator_escrow = "6yXXYuix6c93kfGhqv8fCseRa7pXTKx1pxCjcFeWToPx"
 
 [programs.mainnet]
 observator_escrow = "11111111111111111111111111111111"
