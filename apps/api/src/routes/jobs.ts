@@ -2,11 +2,12 @@
 // Spec §§14, 28. Flow: POST /api/jobs → delivery → verify → settle.
 // Settlement eligibility is decided server-side (services/settlement);
 // chain signatures attach at Checkpoint B (Playground deploy).
+// Storage goes through the Store interface (SQLite dev / Postgres prod).
 import { randomBytes, createHash } from "node:crypto";
 import { PublicKey } from "@solana/web3.js";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import type { Db } from "../db.js";
+import type { Store } from "../db.js";
 import { ConditionSchema } from "../verification/conditions.js";
 import { verifyDelivery } from "../verification/engine.js";
 import { decideSettlement } from "../services/settlement.js";
@@ -80,7 +81,7 @@ function rowToJob(row: Record<string, unknown>) {
   };
 }
 
-export function registerJobRoutes(app: FastifyInstance, db: Db) {
+export function registerJobRoutes(app: FastifyInstance, store: Store) {
   // Create job — spec §28.
   app.post("/api/jobs", async (req, reply) => {
     const parsed = CreateJobBody.safeParse(req.body);
@@ -95,23 +96,24 @@ export function registerJobRoutes(app: FastifyInstance, db: Db) {
     const jobId = `job_${randomBytes(16).toString("hex")}`;
     const now = new Date().toISOString();
     const escrowAddress = deriveEscrowAddress(jobId);
-    db.exec("BEGIN");
+    await store.begin();
     try {
-      db.prepare(
+      await store.run(
         `INSERT INTO jobs (id, buyer_address, provider_url, provider_address,
          escrow_address, amount, mint, status, deadline, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'CREATED', ?, ?, ?)`,
-      ).run(
         jobId, body.buyerAddress, body.providerUrl, body.providerAddress,
         escrowAddress, body.amount, body.mint, body.deadline, now, now,
       );
-      const stmt = db.prepare(
-        "INSERT INTO conditions (job_id, type, config_json, required) VALUES (?, ?, ?, 1)",
-      );
-      for (const c of body.conditions) stmt.run(jobId, c.type, JSON.stringify(c));
-      db.exec("COMMIT");
+      for (const c of body.conditions) {
+        await store.run(
+          "INSERT INTO conditions (job_id, type, config_json, required) VALUES (?, ?, ?, 1)",
+          jobId, c.type, JSON.stringify(c),
+        );
+      }
+      await store.commit();
     } catch (err) {
-      db.exec("ROLLBACK");
+      await store.rollback();
       throw err;
     }
     return reply.code(201).send({ jobId, escrowAddress, status: "CREATED" });
@@ -119,32 +121,28 @@ export function registerJobRoutes(app: FastifyInstance, db: Db) {
 
   // List jobs (dashboard explorer-lite).
   app.get("/api/jobs", async () => {
-    const rows = db
-      .prepare("SELECT * FROM jobs ORDER BY created_at DESC LIMIT 100")
-      .all() as Record<string, unknown>[];
+    const rows = await store.all<Record<string, unknown>>(
+      "SELECT * FROM jobs ORDER BY created_at DESC LIMIT 100",
+    );
     return { jobs: rows.map(rowToJob) };
   });
 
   // Job detail with conditions, deliveries, runs, settlement.
   app.get("/api/jobs/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const job = db.prepare("SELECT * FROM jobs WHERE id = ?").get(id) as
-      | Record<string, unknown>
-      | undefined;
+    const job = await store.get<Record<string, unknown>>("SELECT * FROM jobs WHERE id = ?", id);
     if (!job) return reply.code(404).send({ error: "job_not_found" });
-    const conditions = db.prepare("SELECT * FROM conditions WHERE job_id = ?").all(id);
-    const deliveries = db.prepare("SELECT * FROM deliveries WHERE job_id = ? ORDER BY id").all(id);
-    const runs = db.prepare("SELECT * FROM verification_runs WHERE job_id = ? ORDER BY id").all(id);
-    const settlement = db.prepare("SELECT * FROM settlements WHERE job_id = ?").get(id) ?? null;
+    const conditions = await store.all("SELECT * FROM conditions WHERE job_id = ?", id);
+    const deliveries = await store.all("SELECT * FROM deliveries WHERE job_id = ? ORDER BY id", id);
+    const runs = await store.all("SELECT * FROM verification_runs WHERE job_id = ? ORDER BY id", id);
+    const settlement = (await store.get("SELECT * FROM settlements WHERE job_id = ?", id)) ?? null;
     return { job: rowToJob(job), conditions, deliveries, verificationRuns: runs, settlement };
   });
 
   // Submit delivery — spec §28.
   app.post("/api/jobs/:id/delivery", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const job = db.prepare("SELECT * FROM jobs WHERE id = ?").get(id) as
-      | { status: string }
-      | undefined;
+    const job = await store.get<{ status: string }>("SELECT * FROM jobs WHERE id = ?", id);
     if (!job) return reply.code(404).send({ error: "job_not_found" });
     if (!["CREATED", "DELIVERED", "FAILED"].includes(job.status)) {
       return reply.code(409).send({ error: "delivery_not_allowed", status: job.status });
@@ -154,29 +152,33 @@ export function registerJobRoutes(app: FastifyInstance, db: Db) {
       return reply.code(400).send({ error: "invalid_delivery", details: parsed.error.flatten() });
     }
     const now = new Date().toISOString();
-    db.prepare(
+    await store.run(
       "INSERT INTO deliveries (job_id, evidence_url, submitted_at, metadata_json) VALUES (?, ?, ?, ?)",
-    ).run(id, parsed.data.evidenceUrl, now, JSON.stringify(parsed.data.metadata));
-    db.prepare("UPDATE jobs SET status = 'DELIVERED', updated_at = ? WHERE id = ?").run(now, id);
+      id, parsed.data.evidenceUrl, now, JSON.stringify(parsed.data.metadata),
+    );
+    await store.run("UPDATE jobs SET status = 'DELIVERED', updated_at = ? WHERE id = ?", now, id);
     return reply.code(201).send({ jobId: id, status: "DELIVERED" });
   });
 
   // Verify — runs the deterministic engine server-side, stores the run.
   app.post("/api/jobs/:id/verify", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const job = db.prepare("SELECT * FROM jobs WHERE id = ?").get(id) as
-      | { status: string; deadline: string }
-      | undefined;
+    const job = await store.get<{ status: string; deadline: string }>(
+      "SELECT * FROM jobs WHERE id = ?",
+      id,
+    );
     if (!job) return reply.code(404).send({ error: "job_not_found" });
-    const finalized = db.prepare("SELECT id FROM settlements WHERE job_id = ?").get(id);
+    const finalized = await store.get("SELECT id FROM settlements WHERE job_id = ?", id);
     if (finalized) return reply.code(409).send({ error: "settlement_final" });
-    const delivery = db
-      .prepare("SELECT * FROM deliveries WHERE job_id = ? ORDER BY id DESC LIMIT 1")
-      .get(id) as { evidence_url: string } | undefined;
+    const delivery = await store.get<{ evidence_url: string }>(
+      "SELECT * FROM deliveries WHERE job_id = ? ORDER BY id DESC LIMIT 1",
+      id,
+    );
     if (!delivery) return reply.code(400).send({ error: "no_delivery" });
-    const condRows = db.prepare("SELECT config_json FROM conditions WHERE job_id = ?").all(id) as {
-      config_json: string;
-    }[];
+    const condRows = await store.all<{ config_json: string }>(
+      "SELECT config_json FROM conditions WHERE job_id = ?",
+      id,
+    );
     const startedAt = new Date().toISOString();
     let report;
     try {
@@ -192,10 +194,11 @@ export function registerJobRoutes(app: FastifyInstance, db: Db) {
       return reply.code(500).send({ error: "verification_failed" });
     }
     const completedAt = new Date().toISOString();
-    db.prepare(
+    await store.run(
       "INSERT INTO verification_runs (job_id, status, results_json, started_at, completed_at) VALUES (?, ?, ?, ?, ?)",
-    ).run(id, report.overall, JSON.stringify(report), startedAt, completedAt);
-    db.prepare("UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?").run(
+      id, report.overall, JSON.stringify(report), startedAt, completedAt,
+    );
+    await store.run("UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?", 
       report.overall === "PASS" ? "PASSED" : "FAILED",
       completedAt,
       id,
@@ -206,34 +209,36 @@ export function registerJobRoutes(app: FastifyInstance, db: Db) {
   // Settle — server decides; client input (beyond job id) is not consulted.
   app.post("/api/jobs/:id/settle", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const decision = decideSettlement(db, id);
+    const decision = await decideSettlement(store, id);
     if (!decision.eligible || !decision.action) {
       return reply.code(409).send({ error: decision.reason ?? "not_eligible" });
     }
-    const existing = db.prepare("SELECT * FROM settlements WHERE job_id = ?").get(id) as
-      | Record<string, unknown>
-      | undefined;
+    const existing = await store.get<Record<string, unknown>>(
+      "SELECT * FROM settlements WHERE job_id = ?",
+      id,
+    );
     if (existing) {
       return {
         jobId: id,
-        ...(existing as Record<string, unknown>),
+        ...existing,
         note: "chain submission attaches the signature at Checkpoint B",
       };
     }
     const now = new Date().toISOString();
-    const job = db.prepare("SELECT deadline FROM jobs WHERE id = ?").get(id) as {
+    const job = await store.get<{ deadline: string }>("SELECT deadline FROM jobs WHERE id = ?", id) as {
       deadline: string;
     };
     const expired = Date.now() > Date.parse(job.deadline);
-    db.prepare(
+    await store.run(
       "INSERT INTO settlements (job_id, action, signature, status, created_at) VALUES (?, ?, NULL, 'PENDING', ?)",
-    ).run(id, decision.action, now);
-    db.prepare("UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?").run(
+      id, decision.action, now,
+    );
+    await store.run("UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?", 
       decision.action === "refund" && expired ? "EXPIRED" : "SETTLEMENT_PENDING",
       now,
       id,
     );
-    const row = db.prepare("SELECT * FROM settlements WHERE job_id = ?").get(id);
+    const row = await store.get("SELECT * FROM settlements WHERE job_id = ?", id);
     return {
       jobId: id,
       ...(row as Record<string, unknown>),

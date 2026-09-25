@@ -48,9 +48,9 @@ function createPayload(evidenceIgnored?: string) {
 
 describe("backend workflow", () => {
   let app: Awaited<ReturnType<typeof buildApp>>["app"];
-  let db: Awaited<ReturnType<typeof buildApp>>["db"];
+  let store: Awaited<ReturnType<typeof buildApp>>["store"];
   before(async () => {
-    ({ app, db } = await buildApp(":memory:"));
+    ({ app, store } = await buildApp(":memory:"));
   });
   after(() => {
     for (const s of servers) s.close();
@@ -138,8 +138,11 @@ describe("backend workflow", () => {
     const s1 = await app.inject({ method: "POST", url: `/api/jobs/${jobId}/settle` });
     const s2 = await app.inject({ method: "POST", url: `/api/jobs/${jobId}/settle` });
     assert.deepEqual(s1.json(), s2.json());
-    const count = db.prepare("SELECT COUNT(*) AS n FROM settlements WHERE job_id = ?").get(jobId) as { n: number };
-    assert.equal(count.n, 1);
+    const count = await store.get<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM settlements WHERE job_id = ?",
+      jobId,
+    );
+    assert.equal(count?.n, 1);
   });
 
   it("supports re-delivery retry after failure", async () => {
@@ -198,7 +201,8 @@ describe("backend workflow", () => {
     const url = await serve(GOOD);
     const created = await app.inject({ method: "POST", url: "/api/jobs", payload: createPayload(url) });
     const { jobId } = created.json();
-    db.prepare("UPDATE jobs SET deadline = ? WHERE id = ?").run(
+    await store.run(
+      "UPDATE jobs SET deadline = ? WHERE id = ?",
       new Date(Date.now() - 1000).toISOString(),
       jobId,
     );
@@ -223,7 +227,7 @@ describe("backend workflow", () => {
     const created = await app.inject({ method: "POST", url: "/api/jobs", payload: createPayload(url) });
     const { jobId } = created.json();
     await app.inject({ method: "POST", url: `/api/jobs/${jobId}/delivery`, payload: { evidenceUrl: url } });
-    db.prepare("UPDATE conditions SET config_json = ? WHERE job_id = ?").run('{"type":"vibes"}', jobId);
+    await store.run("UPDATE conditions SET config_json = ? WHERE job_id = ?", '{"type":"vibes"}', jobId);
     const verified = await app.inject({ method: "POST", url: `/api/jobs/${jobId}/verify` });
     assert.equal(verified.statusCode, 500);
     assert.equal(verified.json().error, "verification_failed");
