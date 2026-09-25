@@ -3,10 +3,10 @@ seeds = false
 skip-lint = false
 
 [programs.devnet]
-observator_escrow = "OBSERVATOR111111111111111111111111111111111"
+observator_escrow = "11111111111111111111111111111111"
 
 [programs.mainnet]
-observator_escrow = "OBSERVATOR111111111111111111111111111111111"
+observator_escrow = "11111111111111111111111111111111"
 
 [provider]
 cluster = "devnet"

@@ -14,7 +14,7 @@
 
 use anchor_lang::prelude::*;
 
-declare_id!("OBSERVATOR111111111111111111111111111111111");
+declare_id!("11111111111111111111111111111111");
 
 #[program]
 pub mod observator_escrow {
@@ -183,6 +183,7 @@ pub struct Fund<'info> {
     pub escrow: Account<'info, Escrow>,
     #[account(mut)]
     pub buyer: Signer<'info>,
+    pub mint: InterfaceAccount<'info, anchor_spl::token_interface::Mint>,
     #[account(mut)]
     pub buyer_ata: InterfaceAccount<'info, anchor_spl::token_interface::TokenAccount>,
     #[account(mut)]
@@ -197,6 +198,7 @@ pub struct Settle<'info> {
     pub buyer: UncheckedAccount<'info>,
     pub provider: UncheckedAccount<'info>,
     pub verifier: Signer<'info>,
+    pub mint: InterfaceAccount<'info, anchor_spl::token_interface::Mint>,
     #[account(mut)]
     pub vault: InterfaceAccount<'info, anchor_spl::token_interface::TokenAccount>,
     #[account(mut)]
