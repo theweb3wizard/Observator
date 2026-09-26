@@ -4,6 +4,7 @@
 // External evidence is untrusted input: URL policy, DNS allowlisting,
 // timeouts, size caps, manual redirect handling.
 import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { Ajv } from "ajv";
 import { Condition, ConditionSchema } from "./conditions.js";
 
@@ -65,6 +66,14 @@ function isPrivateIp(ip: string): boolean {
   return false;
 }
 
+/** Pure host policy: DNS hostnames pass the literal check; only resolved
+ *  IPs and literal IP hosts are screened for private ranges. Exported for
+ *  unit tests (regression: public hostnames must never read as private). */
+export function checkResolvedHost(hostname: string, ips: string[]): void {
+  if (ips.length === 0 || ips.some(isPrivateIp)) throw new Error("url_resolves_to_private");
+  if (isIP(hostname) !== 0 && isPrivateIp(hostname)) throw new Error("url_is_private_ip");
+}
+
 async function assertSafeUrl(raw: string, allowPrivateHosts: boolean): Promise<URL> {
   let url: URL;
   try {
@@ -75,14 +84,13 @@ async function assertSafeUrl(raw: string, allowPrivateHosts: boolean): Promise<U
   if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("url_not_http");
   if (url.username !== "" || url.password !== "") throw new Error("url_has_credentials");
   if (!allowPrivateHosts) {
-    let ips: string[];
     try {
-      ips = (await lookup(url.hostname, { all: true })).map((r) => r.address);
-    } catch {
+      const ips = (await lookup(url.hostname, { all: true })).map((r) => r.address);
+      checkResolvedHost(url.hostname, ips);
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith("url_")) throw err;
       throw new Error("dns_lookup_failed");
     }
-    if (ips.length === 0 || ips.some(isPrivateIp)) throw new Error("url_resolves_to_private");
-    if (isPrivateIp(url.hostname)) throw new Error("url_is_private_ip");
   }
   return url;
 }

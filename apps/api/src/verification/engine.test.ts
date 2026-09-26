@@ -3,7 +3,7 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { verifyDelivery } from "./engine.js";
+import { verifyDelivery, checkResolvedHost } from "./engine.js";
 
 const NOW = Date.now();
 const nowMs = () => NOW;
@@ -175,5 +175,15 @@ describe("verification engine", () => {
     const r = await verifyDelivery(baseOpts(url));
     assert.equal(r.overall, "FAIL");
     assert.equal(r.checks[0]?.type, "fetch");
+  });
+
+  it("public DNS hostnames are not mistaken for private IPs", () => {
+    // Regression: isPrivateIp must only screen IP literals, never hostnames.
+    checkResolvedHost("jsonplaceholder.typicode.com", ["172.64.155.211"]);
+    checkResolvedHost("example.com", ["93.184.215.14", "2606:2800:220:1:248:1893:25c8:1946"]);
+    assert.throws(() => checkResolvedHost("127.0.0.1", ["127.0.0.1"]), /url_resolves_to_private/);
+    assert.throws(() => checkResolvedHost("10.0.0.5", ["10.0.0.5"]), /url_resolves_to_private/);
+    assert.throws(() => checkResolvedHost("internal.example", ["192.168.1.10"]), /url_resolves_to_private/);
+    assert.throws(() => checkResolvedHost("example.com", []), /url_resolves_to_private/);
   });
 });
