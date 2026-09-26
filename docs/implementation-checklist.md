@@ -53,7 +53,10 @@
       3/3 mcp; web builds; hygiene: no .env, no secret patterns)
 - [x] Fixed in hardening: expired-unverified → refund; verify/deliver frozen
       after settlement; verify failures fail closed (500, never settle)
-- [ ] Clean-env good+bad demos with real txs (needs Checkpoint B) → H
+- [x] Production backend live (Render + Neon): good → PASS → release and
+      bad → FAIL → refund verified remotely with real escrow PDAs.
+      Fixed en route: SSRF guard blocked all public hostnames (now IP-gated).
+- [ ] Clean-env dashboard demos with on-chain signatures → H
 
 ## Definition of Done (§35)
 Core, security, demo, agent, presentation boxes — all unchecked until H.
