@@ -10,8 +10,7 @@ services:
     startCommand: node apps/api/dist/index.js
     healthCheckPath: /health
     envVars:
-      - key: PORT
-        value: 3001
+      # NOTE: do NOT set PORT — Render injects it and the server reads it.
       - key: DATABASE_URL
         sync: false # paste the Neon pooled connection string in the dashboard
       - key: ALLOW_PRIVATE_HOSTS
