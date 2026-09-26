@@ -21,3 +21,18 @@ services:
         value: 4zMMC9srt5Ri5X14GAgXhaHii3Gn9VQTzRpWhq1FUD9
       - key: NEXT_PUBLIC_PROGRAM_ID
         sync: false # set after Checkpoint B
+  - type: web
+    name: observator-provider
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build --workspace demo/provider
+    startCommand: node demo/provider/dist/index.js
+    healthCheckPath: /health
+    envVars:
+      # NOTE: do NOT set PORT — Render injects it and the server reads it.
+      - key: X402_ENABLED
+        value: 0 # demo endpoints open; set 1 for the 402 payment gate
+      - key: X402_PRICE
+        value: $0.001
+      - key: X402_PAY_TO
+        sync: false # provider wallet for the data-access fee (only when gated)
