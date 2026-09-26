@@ -56,7 +56,10 @@
 - [x] Production backend live (Render + Neon): good → PASS → release and
       bad → FAIL → refund verified remotely with real escrow PDAs.
       Fixed en route: SSRF guard blocked all public hostnames (now IP-gated).
-- [ ] Clean-env dashboard demos with on-chain signatures → H
+- [x] Hosted demo provider live; full public-chain demo verified remotely:
+      good 5/5 PASS → release, bad freshness FAIL → refund (Checkpoint H,
+      minus on-chain fund movement — settlements record PENDING decisions
+      until the settlement-submission client lands).
 
 ## Definition of Done (§35)
 Core, security, demo, agent, presentation boxes — all unchecked until H.
